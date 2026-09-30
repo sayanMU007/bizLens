@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "core",
     "ai",
+    "datasets",
 ]
 
 MIDDLEWARE = [
@@ -62,9 +63,20 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
 
+TEMPLATES = [{  # needed only for DRF's browsable API (DEBUG)
+    "BACKEND": "django.template.backends.django.DjangoTemplates",
+    "DIRS": [],
+    "APP_DIRS": True,
+    "OPTIONS": {"context_processors": ["django.template.context_processors.request"]},
+}]
+
 REST_FRAMEWORK = {
-    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"]
+    + (["rest_framework.renderers.BrowsableAPIRenderer"] if DEBUG else []),
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
+    # MVP is single-user with no login. Phase 9 adds real auth before public deployment.
+    "DEFAULT_AUTHENTICATION_CLASSES": [],
+    "UNAUTHENTICATED_USER": None,
 }
 
 LANGUAGE_CODE = "en-us"
@@ -80,3 +92,11 @@ GROQ_FAST_MODEL = os.environ.get("GROQ_FAST_MODEL", "openai/gpt-oss-20b")
 GROQ_REASONING_EFFORT = os.environ.get("GROQ_REASONING_EFFORT", "medium")
 LLM_TIMEOUT_SECONDS = float(os.environ.get("LLM_TIMEOUT_SECONDS", "30"))
 LLM_MAX_RETRIES = int(os.environ.get("LLM_MAX_RETRIES", "2"))
+
+# --- Datasets ---
+DATA_DIR = Path(os.environ.get("DATA_DIR", BASE_DIR / "data"))
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "25"))
+MAX_ROWS = int(os.environ.get("MAX_ROWS", "500000"))
+MAX_INVALID_ROW_FRACTION = float(os.environ.get("MAX_INVALID_ROW_FRACTION", "0.05"))
+DUCKDB_MEMORY_LIMIT = os.environ.get("DUCKDB_MEMORY_LIMIT", "512MB")
+DUCKDB_QUERY_TIMEOUT_SECONDS = float(os.environ.get("DUCKDB_QUERY_TIMEOUT_SECONDS", "10"))
