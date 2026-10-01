@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BizLens</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#14171c;--mute:#6b7280;--line:#e5e7eb;--brand:#4f46e5;--good:#047857;--bad:#b91c1c;--warn:#b45309;--code:#0f172a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:980px;margin:0 auto;padding:28px 18px 80px}
+h1{margin:0;font-size:26px}h1 small{font-size:14px;color:var(--mute);font-weight:400;margin-left:8px}
+.pitch{color:var(--mute);margin:4px 0 22px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px}
+.card h2{margin:0 0 10px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+button{font:inherit;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 14px;cursor:pointer}
+button.primary{background:var(--brand);border-color:var(--brand);color:#fff}button:disabled{opacity:.5;cursor:not-allowed}
+input[type=text]{flex:1;min-width:260px;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:8px}
+.chip{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);background:#fff;cursor:pointer;margin:0 4px 4px 0;color:var(--brand);font-family:ui-monospace,monospace}
+.chip.q{cursor:default;color:var(--mute)}
+.badge{font-size:12px;padding:2px 8px;border-radius:999px;font-weight:600}
+.b-vetted{background:#e0e7ff;color:#3730a3}.b-custom{background:#fef3c7;color:#92400e}.b-ok{background:#d1fae5;color:#065f46}.b-fb{background:#f3f4f6;color:#4b5563}
+.b-high{background:#fee2e2;color:#991b1b}.b-medium{background:#fef3c7;color:#92400e}.b-low{background:#e5e7eb;color:#374151}
+.answer{font-size:19px;line-height:1.45;margin:6px 0 10px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.kpi{border:1px solid var(--line);border-radius:10px;padding:10px 12px;transition:background .3s}
+.kpi .l{font-size:12px;color:var(--mute)}.kpi .v{font-size:20px;font-weight:650}.kpi .id{font-family:ui-monospace,monospace;font-size:11px;color:var(--mute)}
+.neg{color:var(--bad)}.pos{color:var(--good)}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}th{color:var(--mute);font-weight:600}
+.scroll{overflow-x:auto}.flash{background:#fef9c3!important}
+details{border:1px solid var(--line);border-radius:10px;margin:8px 0;padding:8px 12px}summary{cursor:pointer;font-weight:600}
+pre{background:var(--code);color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto;font-size:12.5px;margin:8px 0}
+ol.steps{padding-left:20px;margin:0}ol.steps li{margin-bottom:10px}
+.action{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}.action b{font-size:16px}
+.muted{color:var(--mute);font-size:13px}.warn{color:var(--warn);font-size:13px;margin:4px 0}
+.err{background:#fef2f2;border:1px solid #fecaca;color:#7f1d1d}
+.trace td,.trace th{font-size:12px}.sub{margin:14px 0 6px;font-weight:600;font-size:14px}
+</style>
+</head>
+<body>
+<main>
+<h1>BizLens <small>decision engine for business data</small></h1>
+<p class="pitch">BizLens doesn't just tell you what happened. It shows you the evidence behind the answer and what you can do next.</p>
+
+<div class="card">
+  <h2>1 · Data</h2>
+  <div class="row">
+    <input type="file" id="file" accept=".csv,.xlsx">
+    <button id="upload">Upload</button>
+    <button id="sample">Use sample sales.csv</button>
+    <span id="dsinfo" class="muted"></span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>2 · Ask</h2>
+  <div class="row">
+    <input type="text" id="q" value="Why did revenue decrease last month?" maxlength="500">
+    <button class="primary" id="ask" disabled>Analyze</button>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <span class="muted">Try:</span>
+    <span class="chip q ex" style="cursor:pointer">Which products declined last month?</span>
+    <span class="chip q ex" style="cursor:pointer">What is the average revenue per transaction by category?</span>
+    <span class="chip q ex" style="cursor:pointer">Forecast revenue for next year</span>
+  </div>
+  <div id="status" class="muted" style="margin-top:8px"></div>
+</div>
+
+<div id="out"></div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let datasetId = null;
+
+function fmt(v, unit) {
+  if (v === null || v === undefined) return "n/a";
+  if (typeof v !== "number") return esc(v);
+  if (unit === "%") return v.toFixed(1) + "%";
+  if (unit === "units" || unit === "transactions" || unit === "rows" || unit === "count") return v.toLocaleString(undefined, {maximumFractionDigits: 0});
+  return v.toLocaleString(undefined, {maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : 2});
+}
+const cls = (v) => (typeof v === "number" && v < 0 ? "neg" : typeof v === "number" && v > 0 ? "pos" : "");
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  let body = null;
+  try { body = await r.json(); } catch (e) {}
+  if (!r.ok) { const e = new Error(body?.error?.message || ("HTTP " + r.status)); e.body = body; throw e; }
+  return body;
+}
+
+async function doUpload(file) {
+  $("status").textContent = "Uploading and validating…";
+  const fd = new FormData(); fd.append("file", file);
+  try {
+    const d = await api("/api/datasets/", {method: "POST", body: fd});
+    datasetId = d.id;
+    $("dsinfo").textContent = `✓ ${d.name} — ${Number(d.row_count).toLocaleString()} rows`;
+    $("ask").disabled = false; $("status").textContent = "";
+  } catch (e) { $("status").innerHTML = `<span class="neg">Upload failed: ${esc(e.message)}</span>`; }
+}
+$("upload").onclick = () => { const f = $("file").files[0]; f ? doUpload(f) : ($("status").textContent = "Choose a CSV or Excel file first."); };
+$("sample").onclick = async () => {
+  const blob = await (await fetch("/demo/sample.csv")).blob();
+  doUpload(new File([blob], "sales.csv", {type: "text/csv"}));
+};
+document.querySelectorAll(".ex").forEach((el) => el.onclick = () => { $("q").value = el.textContent; });
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter" && !$("ask").disabled) $("ask").click(); });
+
+$("ask").onclick = async () => {
+  $("ask").disabled = true; $("out").innerHTML = "";
+  $("status").textContent = "Planning → running SQL → checking the numbers → writing it up…";
+  try {
+    const r = await api(`/api/datasets/${datasetId}/ask/`, {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({question: $("q").value})});
+    $("status").textContent = ""; render(r);
+  } catch (e) {
+    $("status").textContent = "";
+    const trace = e.body?.error?.details?.trace;
+    $("out").innerHTML = `<div class="card err"><b>${esc(e.message)}</b>${trace ? traceHtml(trace) : ""}</div>`;
+  } finally { $("ask").disabled = false; }
+};
+
+function chips(ids) {
+  return (ids || []).map((id) => `<span class="chip" data-ev="${esc(id)}">${esc(id)}</span>`).join("");
+}
+function traceHtml(trace) {
+  return `<details class="trace"><summary>How BizLens got here (${trace.length} steps)</summary><div class="scroll"><table>
+    <tr><th>Step</th><th>Status</th><th>Detail</th><th>Model</th><th>ms</th></tr>` +
+    trace.map((t) => `<tr><td>${esc(t.stage)}</td><td>${esc(t.status)}</td><td style="white-space:normal;text-align:left">${esc(t.detail || "")}</td><td>${esc(t.model || "")}</td><td>${t.latency_ms ?? ""}</td></tr>`).join("") +
+    `</table></div></details>`;
+}
+
+function render(r) {
+  const a = r.analysis, n = r.narrative, out = $("out");
+  if (r.status === "unanswerable") {
+    out.innerHTML = `<div class="card"><h2>Answer</h2><p class="answer">${esc(r.message)}</p><div class="muted">${esc(r.plan.reasoning)}</div></div>` + `<div class="card">${traceHtml(r.trace)}</div>`;
+    return;
+  }
+  const routeBadge = r.route === "analysis" ? `<span class="badge b-vetted">Vetted analysis: ${esc(a.analysis)}</span>` : `<span class="badge b-custom">Custom SQL (AI-written, validated)</span>`;
+  const narBadge = r.narrative_status === "grounded" ? `<span class="badge b-ok">Every number audited against evidence</span>` : `<span class="badge b-fb">Plain summary (AI wording unavailable)</span>`;
+  let h = `<div class="card"><h2>Answer</h2><p class="answer">${esc(n.answer)}</p><div>${chips(n.evidence_ids)}</div>
+    <div class="row" style="margin-top:8px">${routeBadge} ${narBadge}</div>
+    <p class="muted" style="margin-bottom:0">${esc(a.headline)}</p>
+    ${a.warnings.map((w) => `<div class="warn">⚠ ${esc(w)}</div>`).join("")}</div>`;
+
+  // Evidence
+  h += `<div class="card"><h2>Evidence</h2>`;
+  if (a.measurements.length) {
+    h += `<div class="kpis">` + a.measurements.map((m) => `<div class="kpi" id="ev-${esc(m.id)}"><div class="l">${esc(m.label)}</div><div class="v ${cls(m.value)}">${fmt(m.value, m.unit)}</div><div class="id">${esc(m.id)} · from ${esc(m.query_id)}${m.rows_used != null ? " · " + Number(m.rows_used).toLocaleString() + " rows" : ""}</div></div>`).join("") + `</div>`;
+  }
+  a.tables.forEach((t) => {
+    const cols = t.columns.map((c) => c.name).filter((c) => c !== "is_other");
+    h += `<div class="sub">${esc(t.title)} <span class="muted">(${esc(t.id)} · ${esc(t.query_id)})</span></div><div class="scroll"><table><tr>` + cols.map((c) => `<th>${esc(c)}</th>`).join("") + `</tr>` +
+      t.rows.slice(0, 15).map((row, i) => `<tr id="ev-${esc(t.id)}#${i + 1}">` + cols.map((c) => `<td class="${c === "delta" ? cls(row[c]) : ""}">${typeof row[c] === "number" ? fmt(row[c], (t.columns.find((x) => x.name === c) || {}).unit) : esc(row[c])}</td>`).join("") + `</tr>`).join("") + `</table></div>` +
+      (t.rows.length > 15 ? `<div class="muted">Showing 15 of ${t.rows.length} rows.</div>` : "");
+  });
+  h += `</div>`;
+
+  // SQL
+  h += `<div class="card"><h2>Open SQL</h2>` + (r.sql_explanation ? `<div class="muted">The model describes this query as: ${esc(r.sql_explanation)} (not verified; read the SQL.)</div>` : "") +
+    a.queries.map((q) => `<details id="ev-${esc(q.id)}"><summary>${esc(q.id)} — ${esc(q.purpose)} <span class="muted">· ${q.row_count} rows · ${q.duration_ms} ms</span></summary>
+      <pre>${esc(q.sql_rendered)}</pre><button class="copy" data-sql="${esc(q.sql_rendered)}">Copy SQL</button>
+      <span class="muted"> Dataset fingerprint ${esc(a.dataset.sha256.slice(0, 12))}… — paste into any DuckDB shell over the data to reproduce.</span></details>`).join("") + `</div>`;
+
+  // Reasoning
+  h += `<div class="card"><h2>Reasoning</h2>` + (n.reasoning.length ? `<ol class="steps">` + n.reasoning.map((s) => `<li>${esc(s.text)}<div>${chips(s.evidence_ids)}</div></li>`).join("") + `</ol>` : `<div class="muted">No AI reasoning available for this answer.</div>`) +
+    (a.assumptions.length ? `<div class="sub">Assumptions</div><ul class="muted">` + a.assumptions.map((x) => `<li>${esc(x)}</li>`).join("") + `</ul>` : "") +
+    traceHtml(r.trace) + `</div>`;
+
+  // Actions
+  if (n.actions.length) {
+    h += `<div class="card"><h2>Recommended actions</h2>` + n.actions.map((x) => `<div class="action"><div class="row"><span class="badge b-${esc(x.priority)}">${esc(x.priority)}</span><b>${esc(x.title)}</b></div><div>${esc(x.rationale)}</div><div style="margin-top:6px">${chips(x.evidence_ids)}</div></div>`).join("") + `</div>`;
+  }
+  out.innerHTML = h;
+  out.scrollIntoView({behavior: "smooth"});
+}
+
+document.addEventListener("click", (e) => {
+  const chip = e.target.closest("[data-ev]");
+  if (chip) {
+    const el = document.getElementById("ev-" + chip.dataset.ev);
+    if (!el) return;
+    if (el.tagName === "DETAILS") el.open = true;
+    el.scrollIntoView({behavior: "smooth", block: "center"});
+    el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1600);
+  }
+  const copy = e.target.closest(".copy");
+  if (copy) navigator.clipboard.writeText(copy.dataset.sql).then(() => { copy.textContent = "Copied ✓"; setTimeout(() => (copy.textContent = "Copy SQL"), 1500); });
+});
+</script>
+</body>
+</html>

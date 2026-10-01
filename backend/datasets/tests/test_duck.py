@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
-import pandas as pd
+import duckdb
 from django.test import SimpleTestCase, override_settings
 
 from datasets import duck, storage
@@ -72,6 +72,22 @@ class SandboxTests(SimpleTestCase):
     def test_missing_parquet_raises_file_not_found(self):
         with self.assertRaises(FileNotFoundError):
             duck.run_query(SimpleNamespace(id=uuid.uuid4()), "SELECT 1")
+
+    def test_repeated_float_aggregation_is_bit_identical(self):
+        """Multi-threaded float sums add in a varying order and differ in the last digits.
+        Evidence must be reproducible ("re-run the SQL, get the same number"), so sandboxed
+        connections run single-threaded. Regression test for exactly that."""
+        path = storage.parquet_path(self.dataset.id)
+        path.unlink()
+        con = duckdb.connect(":memory:")
+        con.execute(
+            "COPY (SELECT ['East','West'][1 + (i % 2)] AS region, "
+            "round(random() * 1000, 2) AS revenue FROM range(400000) t(i)) "
+            f"TO {duck.qliteral(path)} (FORMAT PARQUET, ROW_GROUP_SIZE 20000)")
+        con.close()
+        sql = "SELECT region, sum(revenue), avg(revenue) FROM sales GROUP BY region ORDER BY region"
+        results = {repr(self.q(sql).rows) for _ in range(40)}
+        self.assertEqual(len(results), 1, "the same query returned different floats on re-run")
 
     def test_identifier_quoting(self):
         self.assertEqual(duck.qident('we"ird'), '"we""ird"')

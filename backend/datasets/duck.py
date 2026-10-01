@@ -65,7 +65,10 @@ def open_dataset(dataset) -> Iterator[duckdb.DuckDBPyConnection]:
     con = duckdb.connect(":memory:")
     try:
         con.execute(f"SET memory_limit={qliteral(settings.DUCKDB_MEMORY_LIMIT)}")
-        con.execute("SET threads=2")
+        # One thread on purpose. With several, float sums are added in a varying order and the
+        # same query returns totals that differ in the last digits between runs. Evidence must
+        # be reproducible, and at MVP data sizes (<= 500k rows) single-threaded is fast enough.
+        con.execute("SET threads=1")
         con.execute(f"CREATE VIEW {TABLE} AS SELECT * FROM read_parquet({qliteral(path)})")
         con.execute(f"SET allowed_paths=[{qliteral(path)}]")
         con.execute("SET enable_external_access=false")
@@ -73,6 +76,33 @@ def open_dataset(dataset) -> Iterator[duckdb.DuckDBPyConnection]:
         yield con
     finally:
         con.close()
+
+
+def execute(
+    con: duckdb.DuckDBPyConnection,
+    sql: str,
+    params: list[Any] | None = None,
+    *,
+    max_rows: int = 1000,
+    timeout_seconds: float | None = None,
+) -> QueryResult:
+    """Run one statement on an already-open (sandboxed) connection, with a time budget."""
+    timeout = timeout_seconds or settings.DUCKDB_QUERY_TIMEOUT_SECONDS
+    timer = threading.Timer(timeout, con.interrupt)
+    timer.start()
+    try:
+        cursor = con.execute(sql, params or [])
+        columns = [d[0] for d in cursor.description]
+        fetched = cursor.fetchmany(max_rows + 1)
+    except duckdb.InterruptException as exc:
+        raise QueryTimeout(f"Query exceeded {timeout:g}s and was cancelled.") from exc
+    except duckdb.Error as exc:
+        raise QueryError(str(exc)) from exc
+    finally:
+        timer.cancel()
+    truncated = len(fetched) > max_rows
+    rows = [[jsonable(v) for v in row] for row in fetched[:max_rows]]
+    return QueryResult(columns=columns, rows=rows, truncated=truncated)
 
 
 def run_query(
@@ -83,20 +113,5 @@ def run_query(
     max_rows: int = 1000,
     timeout_seconds: float | None = None,
 ) -> QueryResult:
-    timeout = timeout_seconds or settings.DUCKDB_QUERY_TIMEOUT_SECONDS
     with open_dataset(dataset) as con:
-        timer = threading.Timer(timeout, con.interrupt)
-        timer.start()
-        try:
-            cursor = con.execute(sql, params or [])
-            columns = [d[0] for d in cursor.description]
-            fetched = cursor.fetchmany(max_rows + 1)
-        except duckdb.InterruptException as exc:
-            raise QueryTimeout(f"Query exceeded {timeout:g}s and was cancelled.") from exc
-        except duckdb.Error as exc:
-            raise QueryError(str(exc)) from exc
-        finally:
-            timer.cancel()
-    truncated = len(fetched) > max_rows
-    rows = [[jsonable(v) for v in row] for row in fetched[:max_rows]]
-    return QueryResult(columns=columns, rows=rows, truncated=truncated)
+        return execute(con, sql, params, max_rows=max_rows, timeout_seconds=timeout_seconds)

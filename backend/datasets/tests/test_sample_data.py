@@ -18,26 +18,31 @@ class SampleDataTests(SimpleTestCase):
         self.assertTrue(generate_sales(42).equals(generate_sales(42)))
         self.assertFalse(generate_sales(42).equals(generate_sales(7)))
 
-    def test_columns(self):
+    def test_columns_and_date_range(self):
         self.assertEqual(list(self.df.columns[:9]), COLUMNS)
+        self.assertEqual((self.df["date"].min(), self.df["date"].max()), ("2025-01-01", "2026-09-30"))
+        self.assertEqual(self.df["month"].nunique(), 21)
 
-    def test_december_drop_is_the_designed_story(self):
+    def test_september_2026_drop_is_the_designed_story(self):
         # Compare average revenue per day: months have 28-31 days, which alone moves totals ~10%.
         monthly = self.df.groupby("month")["revenue"].sum()
-        days = pd.Series({m: calendar.monthrange(2025, int(m[5:]))[1] for m in monthly.index})
+        days = pd.Series({m: calendar.monthrange(int(m[:4]), int(m[5:]))[1] for m in monthly.index})
         daily = (monthly / days).pct_change()
-        self.assertLess(daily["2025-12"], -0.10)
-        # every earlier move is small, so December is the only real drop in the data
-        self.assertLess(daily.loc["2025-02":"2025-11"].abs().max(), 0.10)
+        self.assertLess(daily["2026-09"], -0.15)
+        # every earlier move is small, so September 2026 is the only real drop in the data
+        self.assertLess(daily.loc["2025-02":"2026-08"].abs().max(), 0.12)
 
-    def test_east_is_the_main_driver_and_others_partly_offset(self):
+    def test_east_is_the_main_driver(self):
         by = self.df.pivot_table(index="region", columns="month", values="revenue", aggfunc="sum")
-        delta = by["2025-12"] - by["2025-11"]
+        delta = by["2026-09"] - by["2026-08"]
         self.assertEqual(delta.idxmin(), "East")
         self.assertLess(delta["East"], -100_000)
-        self.assertGreater(delta.drop("East").sum(), 0)  # the others grew a little in aggregate
+        self.assertGreater(delta["East"] / delta.sum(), 0.6)  # most of the total decline
 
-    def test_big_customers_stop_in_december(self):
-        dec_east = self.df[(self.df.month == "2025-12") & (self.df.region == "East")]
-        self.assertNotIn("Northwind Traders", set(dec_east.customer))
-        self.assertNotIn("Contoso Retail", set(dec_east.customer))
+    def test_big_customers_stop_in_september_2026(self):
+        east = self.df[self.df.region == "East"]
+        sep = east[east.month == "2026-09"]
+        self.assertNotIn("Northwind Traders", set(sep.customer))
+        self.assertNotIn("Contoso Retail", set(sep.customer))
+        aug = east[east.month == "2026-08"]
+        self.assertIn("Northwind Traders", set(aug.customer))  # they were active until August

@@ -56,8 +56,8 @@ class UploadTests(ApiTestBase):
         types = {c["name"]: c["dtype"] for c in body["columns"]}
         self.assertEqual((types["date"], types["units"], types["revenue"], types["region"]),
                          ("DATE", "BIGINT", "DOUBLE", "VARCHAR"))
-        self.assertEqual(body["profile"]["date_range"], {"min": "2025-01-01", "max": "2025-12-31"})
-        self.assertEqual(body["profile"]["distinct_months"], 12)
+        self.assertEqual(body["profile"]["date_range"], {"min": "2025-01-01", "max": "2026-09-30"})
+        self.assertEqual(body["profile"]["distinct_months"], 21)
         ds = Dataset.objects.get(pk=body["id"])
         self.assertTrue(storage.parquet_path(ds.id).exists())
         self.assertTrue(storage.raw_path(ds.id, "csv").exists())
@@ -128,6 +128,12 @@ class UploadRejectionTests(ApiTestBase):
 
     def test_no_file(self):
         res = self.client.post(URL, {}, format="multipart")
+        self.assertRejected(res, "invalid_request")
+        self.assertIn("multipart form field named 'file'", res.json()["error"]["message"])
+
+    def test_file_sent_under_wrong_field_name(self):
+        f = SimpleUploadedFile("sales.csv", csv_bytes(make_df(30)))
+        res = self.client.post(URL, {"sales": f}, format="multipart")
         self.assertRejected(res, "invalid_request")
 
     def test_missing_columns_named_in_error(self):

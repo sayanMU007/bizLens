@@ -25,3 +25,22 @@ def health(request):
         },
     }
     return Response(body, status=200 if db_ok else 503)
+
+
+# --- Demo UI (single self-contained page; no build step) -----------------------------------
+from pathlib import Path as _Path
+
+from django.conf import settings as _settings
+from django.http import FileResponse, Http404, HttpResponse
+
+
+def demo(request):
+    page = _Path(__file__).resolve().parent / "static_demo" / "demo.html"
+    return HttpResponse(page.read_text(encoding="utf-8"), content_type="text/html; charset=utf-8")
+
+
+def demo_sample_csv(request):
+    path = _Path(_settings.BASE_DIR) / "sample_data" / "sales.csv"
+    if not path.exists():
+        raise Http404("sample_data/sales.csv not found")
+    return FileResponse(open(path, "rb"), content_type="text/csv")

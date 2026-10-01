@@ -18,6 +18,7 @@ services:
   backend:
     build: ./backend
     env_file: .env            # GROQ_API_KEY lives here and reaches ONLY this service
+    command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
     environment:
       POSTGRES_HOST: db       # overrides the localhost value from .env
       DATA_DIR: /app/data     # uploaded files + Parquet live on the named volume below

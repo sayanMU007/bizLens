@@ -28,6 +28,8 @@ if not SECRET_KEY:
         raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set when DEBUG is off.")
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
+if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):  # set automatically by Render
+    ALLOWED_HOSTS.append(os.environ["RENDER_EXTERNAL_HOSTNAME"])
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
@@ -37,6 +39,8 @@ INSTALLED_APPS = [
     "core",
     "ai",
     "datasets",
+    "analytics",
+    "ask",
 ]
 
 MIDDLEWARE = [
@@ -49,16 +53,23 @@ ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get("POSTGRES_DB", "bizlens"),
-        "USER": os.environ.get("POSTGRES_USER", "bizlens"),
-        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
-        "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
-        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+if os.environ.get("POSTGRES_HOST") and not env_bool("USE_SQLITE", False):
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.environ.get("POSTGRES_DB", "bizlens"),
+            "USER": os.environ.get("POSTGRES_USER", "bizlens"),
+            "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
+            "HOST": os.environ["POSTGRES_HOST"],
+            "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+        }
     }
-}
+else:
+    # Single-service deploys (e.g. Render free tier): no separate database needed. The metadata
+    # DB sits next to the dataset files, so both are reset together and never disagree.
+    _DATA = Path(os.environ.get("DATA_DIR", BASE_DIR / "data"))
+    _DATA.mkdir(parents=True, exist_ok=True)
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": _DATA / "bizlens.sqlite3"}}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
@@ -77,6 +88,7 @@ REST_FRAMEWORK = {
     # MVP is single-user with no login. Phase 9 adds real auth before public deployment.
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "UNAUTHENTICATED_USER": None,
+    "DEFAULT_THROTTLE_RATES": {"anon": os.environ.get("ASK_RATE_LIMIT", "60/hour")},
 }
 
 LANGUAGE_CODE = "en-us"

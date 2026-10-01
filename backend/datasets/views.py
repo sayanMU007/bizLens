@@ -31,7 +31,11 @@ class DatasetListCreateView(GenericAPIView):
     def post(self, request):
         serializer = UploadSerializer(data=request.data)
         if not serializer.is_valid():
-            return error_response("invalid_request", "Invalid upload request.", serializer.errors)
+            message = "Invalid upload request."
+            if "file" in serializer.errors:
+                message = ("No usable file was received. Send it as a multipart form field named "
+                           "'file' (in the browser page, use the HTML form and choose a file first).")
+            return error_response("invalid_request", message, serializer.errors)
         try:
             dataset = ingest_upload(
                 uploaded=serializer.validated_data["file"],

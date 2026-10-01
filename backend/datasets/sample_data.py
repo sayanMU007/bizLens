@@ -1,8 +1,9 @@
 """Deterministic demo dataset with a built-in story.
 
-Calendar 2025, four regions. In December the two biggest East-region customers stop
-ordering and Aurora Headphones volume halves in East, so December revenue falls versus
-November and the decline is concentrated in East. This is the answer BizLens should find.
+Jan 2025 - Sep 2026, four regions, a gentle upward trend. In September 2026 the two
+biggest East-region customers stop ordering and Aurora Headphones volume halves in East,
+so September revenue falls versus August and the decline is concentrated in East.
+That is the answer BizLens should find for "Why did revenue decrease last month?".
 """
 from __future__ import annotations
 
@@ -10,6 +11,10 @@ import datetime
 import random
 
 import pandas as pd
+
+START = datetime.date(2025, 1, 1)
+END = datetime.date(2026, 9, 30)
+STORY_YEAR, STORY_MONTH = 2026, 9
 
 # name, category, unit price, unit cost, sales weight
 PRODUCTS = [
@@ -43,19 +48,23 @@ def generate_sales(seed: int = 42) -> pd.DataFrame:
     rng = random.Random(seed)
     weights = [p[4] for p in PRODUCTS]
     rows = []
-    day = datetime.date(2025, 1, 1)
-    while day.year == 2025:
-        december = day.month == 12
+    day = START
+    while day <= END:
+        month_index = (day.year - START.year) * 12 + day.month - START.month
+        story_month = (day.year, day.month) == (STORY_YEAR, STORY_MONTH)
+        # Gentle growth: the chance of one extra transaction per region-day rises over time.
+        growth = min(month_index * 0.05, 1.0)
         for region, (customers, salespeople) in REGIONS.items():
             cust_weights = [4 if (region == "East" and c in BIG_EAST_CUSTOMERS) else 1
                             for c in customers]
-            for _ in range(rng.randint(8, 12)):
+            n = rng.randint(8, 12) + (1 if rng.random() < growth else 0)
+            for _ in range(n):
                 name, category, price, unit_cost, _w = rng.choices(PRODUCTS, weights)[0]
                 customer = rng.choices(customers, cust_weights)[0]
                 # Big-ticket items sell in small quantities; keeps monthly noise low so the
-                # designed December drop is the only large movement in the data.
+                # designed drop is the only large movement in the data.
                 units = rng.randint(1, 4) if price >= 300 else rng.randint(1, 12)
-                if december and region == "East":
+                if story_month and region == "East":
                     if customer in BIG_EAST_CUSTOMERS:
                         continue  # these customers stopped ordering
                     if name == "Aurora Headphones":
