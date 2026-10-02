@@ -7,8 +7,8 @@
 **Live demo:** https://bizlens-g2uh.onrender.com
 *(free hosting: the first load after idle can take about a minute. Click **Use sample sales.csv** to start.)*
 
-(<img width="1440" height="870" alt="screenshot" src="https://github.com/user-attachments/assets/d6fdc2d3-6e1c-456b-9e69-50a84aed160c" />
-)
+<img width="1440" height="870" alt="screenshot" src="https://github.com/user-attachments/assets/d6fdc2d3-6e1c-456b-9e69-50a84aed160c" />
+
 
 
 ---
